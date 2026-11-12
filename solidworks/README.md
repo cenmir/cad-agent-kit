@@ -16,6 +16,9 @@ with SolidWorks 2026 (rev 34.4.1) and Windows PowerShell 5.1.
 | `jobs/Plate.cs` | builds a parametric plate from scratch and tests it: the method in one file |
 | `jobs/Open.cs`, `jobs/Close.cs` | open a document visibly; close documents without saving |
 | `jobs/Dialog.cs`, `jobs/Equations.cs` | open a feature's PropertyManager, or Tools > Equations |
+| `jobs/Dump.cs` | a part as text: features and parents, sketch entities, relations, dimensions, curve equations |
+| `jobs/Compare.cs` | two parts rebuilt over the same parameter values: errors, bodies, volumes |
+| `examples/gears/` | spur, helical and herringbone gears built and checked from scratch ([README](examples/gears/README.md)) |
 
 ## Running a job
 
@@ -73,7 +76,8 @@ Get-Process SLDWORKS | select Id, SessionId, MainWindowTitle # running, and in w
 
 ## Writing a job
 
-A job is one static class `Job` with `public static string Run(string arg)`; the returned text is the
+Helpers that only some jobs need go in a `*.lib.cs` file next to them; `job.ps1` compiles every
+`*.lib.cs` in the job's folder with it. A job is one static class `Job` with `public static string Run(string arg)`; the returned text is the
 report. `job.ps1` adds the `using` lines (`System`, `System.IO`, `System.Text`,
 `System.Collections.Generic`, `System.Runtime.InteropServices`, `SolidWorks.Interop.sldworks`,
 `SolidWorks.Interop.swconst`) and strips the job's own, so jobs carry none.
@@ -181,6 +185,29 @@ from outside the desktop session.) Look at every picture before using it.
 
 ## Traps
 
+- **Two coordinate systems.** The sketch `Create*` calls take *sketch* coordinates, but
+  `AddDimension2` takes the text position in *model* coordinates. For an angle between two lines
+  the text position decides which angle is dimensioned: placed in the wrong quadrant, the
+  dimension measured 175.5° instead of 4.5°, and linking it to `MidAngle` swung the line to the
+  other side without any error. Convert with `ModelToSketchTransform` (`Gear.Dim` in
+  `examples/gears/Gear.lib.cs` does).
+- **Equation-driven curves need their ends locked.** `CreateEquationSpline2(..., lockStart, lockEnd)`:
+  with `false, false` a Fixed curve still leaves the sketch under-defined; the GUI sets both.
+- **Points created at the same place are one point.** With `AddToDB = true`, circles and lines all
+  started at (0, 0) share a single sketch point. One relation puts it on the origin; further
+  "coincident with origin" relations on it are silently ignored.
+- **Selected Contours.** `SelectByID2(name, "SKETCHREGION", x, y, z, ..., mark 4)` found no region
+  when run from a job. Take the regions from `Sketch.GetSketchRegions()`, find the one that
+  contains a point, and `Select2` it with mark 4 (`Gear.SelRegion`).
+- **Only the active document rebuilds its equations.** With two parts open, `ForceRebuild3` on the
+  inactive one kept its old size. Activate it first (`ActivateDoc3`) and call
+  `EquationMgr.EvaluateAll()`.
+- **A failed rebuild can freeze the parameters.** After a case whose rebuild failed (or whose value
+  SolidWorks refused, such as a fillet radius that turns negative), later parameter changes were
+  ignored: same geometry, no error. `Sw.SetGlobals` sets, evaluates, rebuilds and reads every value
+  back (`NOT APPLIED`); `Sweep.cs` and `Compare.cs` reopen the unsaved copy after such a case.
+- **Check the saved part.** Checked in the same session right after building it, a part ignored some
+  parameter changes; saved, closed and reopened, it followed them all.
 - **Invisible dialogs.** `AddDimension2` opens the Modify box and waits for a click unless
   `swInputDimValOnCreate` is off. `Sw.App()` turns it off.
 - **Reserved names.** `EquationMgr.Add2` returns -1, without a reason, for a global called

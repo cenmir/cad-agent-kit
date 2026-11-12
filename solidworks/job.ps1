@@ -1,4 +1,4 @@
-# job.ps1: compile lib\*.cs plus one C# job against the SolidWorks API and print Job.Run(Arg).
+# job.ps1: compile lib\*.cs, the job's *.lib.cs neighbours and one C# job against the SolidWorks API and print Job.Run(Arg).
 #   powershell.exe -NoProfile -ExecutionPolicy Bypass -File job.ps1 -Job jobs\Hello.cs
 #   powershell.exe -NoProfile -ExecutionPolicy Bypass -File job.ps1 -Job jobs\Inspect.cs -Arg "C:\parts\bracket.SLDPRT"
 # Needs Windows PowerShell 5.1 (powershell.exe). PowerShell 7 (pwsh) has no Marshal.GetActiveObject.
@@ -17,7 +17,9 @@ try {
   $refs = 'sldworks', 'swconst', 'swcommands' | ForEach-Object { Join-Path $redist "SolidWorks.Interop.$_.dll" }
   foreach ($r in $refs) { Add-Type -Path $r }
   $jobPath = if ([IO.Path]::IsPathRooted($Job)) { $Job } else { Join-Path $here $Job }
-  $files = @(Get-ChildItem (Join-Path $here 'lib\*.cs') | ForEach-Object FullName) + $jobPath
+  # the shared helpers, the helpers next to the job (*.lib.cs), then the job
+  $local = @(Get-ChildItem (Join-Path (Split-Path $jobPath) '*.lib.cs') | ForEach-Object FullName)
+  $files = @(Get-ChildItem (Join-Path $here 'lib\*.cs') | ForEach-Object FullName) + $local + $jobPath
   $src = ($files | ForEach-Object { Get-Content -Raw $_ }) -join "`n"
   $src = $src -replace '(?m)^using [^\r\n]*\r?\n', ''   # one shared set of usings, below
   $src = "using System; using System.IO; using System.Text; using System.Collections.Generic; " +

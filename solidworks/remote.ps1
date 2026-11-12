@@ -12,9 +12,11 @@ if (-not $user) {   # Win32_ComputerSystem.UserName is empty while the session i
 }
 if (-not $user) { 'No one is logged in at the desktop; SolidWorks needs a logged-in session.'; exit 1 }
 $timeout = if ($env:CAD_KIT_TIMEOUT) { [int]$env:CAD_KIT_TIMEOUT } else { 900 }
+# every run has its own request, result and task name, so a run that outlives its timeout cannot
+# be confused with the next one
+$id = (Get-Date -Format 'yyyyMMdd_HHmmss_') + (Get-Random -Maximum 10000)
 $dir = Join-Path $here 'work\remote'; New-Item -ItemType Directory -Force $dir | Out-Null
-$out = Join-Path $dir 'result.txt'; $req = Join-Path $dir 'request.ps1'
-Remove-Item $out, "$out.done" -ErrorAction SilentlyContinue
+$out = Join-Path $dir "$id.result.txt"; $req = Join-Path $dir "$id.request.ps1"; $task = "CadAgentKit_$id"
 # write the call literally: -Name tokens stay parameter names, everything else is a quoted string
 $q = { param($s) "'" + ($s -replace "'", "''") + "'" }
 $call = "& " + (& $q (Join-Path $here $Script))
@@ -28,9 +30,10 @@ catch { `$_.ToString() | Set-Content -Encoding UTF8 $(& $q $out) }
 # conhost --headless keeps the console off the user's screen (Windows Terminal ignores hidden windows)
 $a = New-ScheduledTaskAction -Execute conhost.exe -Argument "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$req`""
 $p = New-ScheduledTaskPrincipal -UserId "$env:COMPUTERNAME\$user" -LogonType Interactive
-Register-ScheduledTask -TaskName CadAgentKit -Action $a -Principal $p -Force -ErrorAction Stop | Out-Null
-Start-ScheduledTask -TaskName CadAgentKit
+Register-ScheduledTask -TaskName $task -Action $a -Principal $p -Force -ErrorAction Stop | Out-Null
+Start-ScheduledTask -TaskName $task
 $t = 0; while (-not (Test-Path "$out.done") -and $t -lt $timeout) { Start-Sleep 1; $t += 1 }
-Unregister-ScheduledTask -TaskName CadAgentKit -Confirm:$false
+Unregister-ScheduledTask -TaskName $task -Confirm:$false
 if (Test-Path "$out.done") { Get-Content $out }
-else { "TIMEOUT after $timeout s. The job is probably waiting for a dialog in SolidWorks. Do not kill it: close the dialog (ui.ps1 keys '{ESC}')." }
+else { "TIMEOUT after $timeout s. The job goes on and writes $out (and $out.done) when it ends. A long job is fine; " +
+       "one waiting for a dialog in SolidWorks needs the dialog closed (look first: ui.ps1 shot). Do not kill it." }

@@ -6,14 +6,18 @@ public static class Job {
     var names = new List<string>(); var values = new List<string[]>();
     for (int i = 1; i < parts.Length; i++) { var kv = parts[i].Split('='); names.Add(kv[0].Trim()); values.Add(kv[1].Split(',')); }
     try {
-      doc = Sw.OpenCopy(sw, parts[0]);
+      doc = Sw.OpenCopy(sw, parts[0]); string copy = doc.GetPathName();
       doc.ForceRebuild3(false); sb.AppendLine("as delivered: " + Sw.Failures(doc));
       var idx = new int[names.Count];
       while (true) {
-        var label = new List<string>();
-        for (int k = 0; k < names.Count; k++) { Sw.SetGlobal(doc, names[k], values[k][idx[k]].Trim()); label.Add(names[k] + "=" + values[k][idx[k]].Trim()); }
-        doc.ForceRebuild3(false);
-        sb.AppendLine(string.Join(" ", label) + " | " + Sw.Failures(doc) + " | " + Sw.Bodies(doc).Replace("\r\n", " ; "));
+        var label = new List<string>(); var vals = new string[names.Count];
+        for (int k = 0; k < names.Count; k++) { vals[k] = values[k][idx[k]].Trim(); label.Add(names[k] + "=" + vals[k]); }
+        string applied = Sw.SetGlobals(doc, names.ToArray(), vals);
+        string fail = Sw.Failures(doc);
+        sb.AppendLine(string.Join(" ", label) + " | " + (applied != "" ? applied + " | " : "") + fail + " | " + Sw.Bodies(doc).Replace("\r\n", " ; "));
+        // After a failed rebuild SolidWorks may ignore the next changes: start the next case from the
+        // unsaved copy on disk.
+        if (fail != "ok" || applied != "") { Sw.Close(sw, doc); doc = Sw.Open(sw, copy); }
         int j = 0; while (j < idx.Length && ++idx[j] == values[j].Length) { idx[j] = 0; j++; }
         if (j == idx.Length) break;
       }

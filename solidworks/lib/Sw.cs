@@ -87,4 +87,20 @@ public static class Sw {
       if (eq.get_Equation(i).Replace(" ", "").StartsWith(key)) { eq.set_Equation(i, "\"" + name + "\" = " + value); return; }
     if (eq.Add2(-1, "\"" + name + "\" = " + value, true) < 0) throw new Exception("cannot add global " + name);
   }
+  // Set several globals, evaluate, rebuild, then read every one back. Returns "" when all took
+  // effect, else "NOT APPLIED: ...". A value that drives some dimension out of range (a negative
+  // fillet radius, say) can be refused without any rebuild error, and from then on further changes
+  // may be ignored too, so a sweep must check the values it set, not only the feature errors.
+  public static string SetGlobals(ModelDoc2 doc, string[] names, string[] values) {
+    for (int k = 0; k < names.Length; k++) SetGlobal(doc, names[k], values[k]);
+    var eq = doc.GetEquationMgr(); eq.EvaluateAll(); doc.ForceRebuild3(false);
+    var bad = new List<string>();
+    for (int k = 0; k < names.Length; k++) {
+      double want; if (!double.TryParse(values[k], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out want)) continue;
+      double got = double.NaN; string key = "\"" + names[k] + "\"=";
+      for (int i = 0; i < eq.GetCount(); i++) if (eq.get_Equation(i).Replace(" ", "").StartsWith(key)) got = eq.get_Value(i);
+      if (double.IsNaN(got) || Math.Abs(got - want) > 1e-9 * Math.Max(1, Math.Abs(want))) bad.Add(names[k] + "=" + got + " (asked " + values[k] + ")");
+    }
+    return bad.Count == 0 ? "" : "NOT APPLIED: " + string.Join(", ", bad);
+  }
 }

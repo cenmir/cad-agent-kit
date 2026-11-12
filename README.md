@@ -92,6 +92,7 @@ tedious by hand and quick for the assistant, and this is where it adds the most.
 CLAUDE.md          instructions for the assistant (AGENTS.md points here)
 docs/lessons.md    what building gears and plates this way taught us
 solidworks/        job.ps1, remote.ps1, ui.ps1, lib/Sw.cs, jobs/*.cs, README.md
+  examples/gears/  spur, helical and herringbone gears, built and verified from scratch
 freecad/           plate_sweep.py, README.md
 solidcraft/        README.md
 fusion/            README.md (to be written)
